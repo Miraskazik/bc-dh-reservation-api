@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # jen kvůli mvn deploy na push do main
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          # server-id musí odpovídat <distributionManagement><repository><id> v pom.xml
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      # PR: build = openapi-generator vygeneruje klienta + server stub z openapi.yaml
+      # a zkompiluje je → nevalidní spec build shodí (implicitní validace kontraktu).
+      - name: Build & verify (PR)
+        if: github.event_name == 'pull_request'
+        run: mvn -B verify
+
+      # Push do main: build + publikace artefaktu 0.1.0 do GitHub Packages.
+      # Pozn.: GitHub Packages nepřepisuje release verzi — nová verze = bump <version> v pom.xml.
+      - name: Deploy to GitHub Packages (main)
+        if: github.event_name == 'push'
+        run: mvn -B deploy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

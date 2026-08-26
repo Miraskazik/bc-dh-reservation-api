@@ -1,0 +1,316 @@
+openapi: 3.1.0
+info:
+  title: Dog Hotel — Reservation API
+  description: >
+    Kontrakt služby bc-dh-reservation (rezervace pobytů psů). Rezervace odkazuje na
+    zákazníka (customerId) a psa (dogId) přes UUID; existenci obou služba ověřuje při
+    vytvoření. Denní sazba (pricePerDay) je součást requestu a ukládá se jako snapshot.
+    Lifecycle: PENDING → FINISHED (dokončený pobyt) nebo PENDING → CANCELLED (zrušení,
+    volitelně s refundací). Dokončení a refundované zrušení publikují Kafka eventy
+    (viz dh-infra/docs/event-catalog.md).
+  version: 0.1.0
+  contact:
+    name: Dog Hotel
+    url: https://github.com/Miraskazik/bc-dh-reservation-api
+
+servers:
+  - url: http://localhost:8083
+    description: lokální běh (dh-infra)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: reservations
+    description: Rezervace pobytů psů
+
+paths:
+  /api/reservations:
+    post:
+      tags: [reservations]
+      operationId: createReservation
+      summary: Vytvoří rezervaci (ověří existenci zákazníka a psa)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationRequest'
+      responses:
+        '201':
+          description: Rezervace vytvořena
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      tags: [reservations]
+      operationId: listReservations
+      summary: Stránkovaný seznam rezervací s filtry
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - name: customerId
+          in: query
+          description: Filtr na rezervace daného zákazníka
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: dogId
+          in: query
+          description: Filtr na rezervace daného psa
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filtr na stav rezervace
+          required: false
+          schema:
+            $ref: '#/components/schemas/ReservationStatus'
+      responses:
+        '200':
+          description: Stránka rezervací
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationPage'
+
+  /api/reservations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ReservationId'
+    get:
+      tags: [reservations]
+      operationId: getReservation
+      summary: Detail rezervace
+      responses:
+        '200':
+          description: Rezervace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/reservations/{id}/finish:
+    parameters:
+      - $ref: '#/components/parameters/ReservationId'
+    post:
+      tags: [reservations]
+      operationId: finishReservation
+      summary: Označí rezervaci za dokončenou (PENDING → FINISHED, publikuje dh.reservation.finished)
+      responses:
+        '200':
+          description: Rezervace dokončena
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/reservations/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ReservationId'
+    post:
+      tags: [reservations]
+      operationId: cancelReservation
+      summary: Zruší rezervaci (PENDING → CANCELLED; při refundAmount > 0 publikuje dh.reservation.refunded)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '200':
+          description: Rezervace zrušena
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak JWT (realm dog-hotel)
+
+  parameters:
+    ReservationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Číslo stránky (od 0)
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      required: false
+      description: Velikost stránky
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    NotFound:
+      description: Záznam nenalezen
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    BadRequest:
+      description: Nevalidní požadavek (validace, neexistující zákazník/pes)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: Nepovolený přechod stavu (rezervace už není PENDING)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+  schemas:
+    ReservationStatus:
+      type: string
+      description: Stav rezervace
+      enum: [PENDING, FINISHED, CANCELLED]
+
+    Reservation:
+      type: object
+      description: Rezervace pobytu psa
+      required: [id, customerId, dogId, dateFrom, dateTo, pricePerDay, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        dogId:
+          type: string
+          format: uuid
+        dateFrom:
+          type: string
+          format: date
+        dateTo:
+          type: string
+          format: date
+        pricePerDay:
+          type: number
+          description: Denní sazba (snapshot z okamžiku vytvoření)
+        status:
+          $ref: '#/components/schemas/ReservationStatus'
+        refundAmount:
+          type: number
+          description: Výše refundace při zrušení (jen u CANCELLED s refundací)
+        cancelledAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReservationRequest:
+      type: object
+      description: Data pro vytvoření rezervace
+      required: [customerId, dogId, dateFrom, dateTo, pricePerDay]
+      properties:
+        customerId:
+          type: string
+          format: uuid
+        dogId:
+          type: string
+          format: uuid
+        dateFrom:
+          type: string
+          format: date
+        dateTo:
+          type: string
+          format: date
+        pricePerDay:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Denní sazba pobytu (> 0)
+
+    CancelRequest:
+      type: object
+      description: Data pro zrušení rezervace
+      properties:
+        refundAmount:
+          type: number
+          minimum: 0
+          description: Výše refundace; > 0 vyvolá event dh.reservation.refunded
+
+    ReservationPage:
+      type: object
+      description: Stránka rezervací
+      required: [content, page, size, totalElements, totalPages]
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reservation'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+
+    ProblemDetail:
+      type: object
+      description: RFC 9457 problem detail
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type: string
+        instance:
+          type: string

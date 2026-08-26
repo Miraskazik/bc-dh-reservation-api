@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>cz.doghotel</groupId>
+  <artifactId>bc-dh-reservation-api</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>bc-dh-reservation-api</name>
+  <description>Dog Hotel — API kontrakt služby bc-dh-reservation (klient + server stub generované z openapi.yaml)</description>
+  <url>https://github.com/Miraskazik/bc-dh-reservation-api</url>
+
+  <properties>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <spring-boot.version>4.1.0</spring-boot.version>
+    <openapi-generator.version>7.23.0</openapi-generator.version>
+    <base-package>cz.doghotel.reservation.api</base-package>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-webmvc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-context</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-annotations</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.validation</groupId>
+      <artifactId>jakarta.validation-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.annotation</groupId>
+      <artifactId>jakarta.annotation-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.openapitools</groupId>
+        <artifactId>openapi-generator-maven-plugin</artifactId>
+        <version>${openapi-generator.version}</version>
+        <executions>
+          <!-- Klient: Spring HTTP Interface (@HttpExchange), konzumují ho BFF a jiné BC -->
+          <execution>
+            <id>generate-client</id>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+            <configuration>
+              <inputSpec>${project.basedir}/openapi.yaml</inputSpec>
+              <generatorName>spring</generatorName>
+              <library>spring-http-interface</library>
+              <output>${project.build.directory}/generated-sources/client</output>
+              <generateSupportingFiles>false</generateSupportingFiles>
+              <apiPackage>${base-package}.client</apiPackage>
+              <modelPackage>${base-package}.client.model</modelPackage>
+              <configOptions>
+                <useJakartaEe>true</useJakartaEe>
+                <openApiNullable>false</openApiNullable>
+                <documentationProvider>none</documentationProvider>
+                <annotationLibrary>none</annotationLibrary>
+                <useTags>true</useTags>
+              </configOptions>
+            </configuration>
+          </execution>
+          <!-- Server stub: interfaces + DTO, delegate pattern; implementuje ho bc-dh-reservation -->
+          <execution>
+            <id>generate-server</id>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+            <configuration>
+              <inputSpec>${project.basedir}/openapi.yaml</inputSpec>
+              <generatorName>spring</generatorName>
+              <library>spring-boot</library>
+              <output>${project.build.directory}/generated-sources/server</output>
+              <supportingFilesToGenerate>ApiUtil.java</supportingFilesToGenerate>
+              <apiPackage>${base-package}.server</apiPackage>
+              <modelPackage>${base-package}.server.model</modelPackage>
+              <configOptions>
+                <useSpringBoot3>true</useSpringBoot3>
+                <useJakartaEe>true</useJakartaEe>
+                <delegatePattern>true</delegatePattern>
+                <openApiNullable>false</openApiNullable>
+                <documentationProvider>none</documentationProvider>
+                <annotationLibrary>none</annotationLibrary>
+                <useTags>true</useTags>
+                <interfaceOnly>false</interfaceOnly>
+                <skipDefaultInterface>false</skipDefaultInterface>
+              </configOptions>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages — Miraskazik/bc-dh-reservation-api</name>
+      <url>https://maven.pkg.github.com/Miraskazik/bc-dh-reservation-api</url>
+    </repository>
+  </distributionManagement>
+</project>
