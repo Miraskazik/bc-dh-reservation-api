@@ -22,9 +22,9 @@ jobs:
       (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: read          # review-only; pro pushování oprav Claudem by bylo potřeba write
+      pull-requests: write    # zápis review a komentářů do PR
+      issues: write           # odpovědi na @claude v issues
       id-token: write
       actions: read
     steps:
