@@ -32,10 +32,31 @@ jobs:
         if: github.event_name == 'pull_request'
         run: mvn -B verify
 
-      # Push do main: build + publikace artefaktu 0.1.0 do GitHub Packages.
-      # Pozn.: GitHub Packages nepřepisuje release verzi — nová verze = bump <version> v pom.xml.
+      # Push do main: publikuj jen když verze z pom.xml v Packages ještě není.
+      # GitHub Packages release verzi nepřepisuje — opakovaný deploy stejné verze
+      # skončí 409 Conflict. Nová verze = bump <version> v pom.xml.
       - name: Deploy to GitHub Packages (main)
         if: github.event_name == 'push'
-        run: mvn -B deploy
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          HELP=org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate
+          GROUP=$(mvn -B -q $HELP -Dexpression=project.groupId -DforceStdout)
+          ARTIFACT=$(mvn -B -q $HELP -Dexpression=project.artifactId -DforceStdout)
+          VERSION=$(mvn -B -q $HELP -Dexpression=project.version -DforceStdout)
+          POM_URL="https://maven.pkg.github.com/${{ github.repository }}/${GROUP//.//}/$ARTIFACT/$VERSION/$ARTIFACT-$VERSION.pom"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GITHUB_TOKEN" "$POM_URL")
+          case "$CODE" in
+            200|302)
+              echo "::notice::$ARTIFACT:$VERSION už v GitHub Packages je — deploy přeskočen. Nová verze = bump <version> v pom.xml."
+              mvn -B verify
+              ;;
+            404)
+              mvn -B deploy
+              ;;
+            *)
+              echo "::warning::Nečekaná odpověď registru (HTTP $CODE) — zkouším deploy naslepo."
+              mvn -B deploy
+              ;;
+          esac
